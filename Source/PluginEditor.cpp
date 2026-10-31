@@ -16,8 +16,15 @@ RowComponent::RowComponent (BridgeProcessor& p, int idx, std::function<void()> o
 
     type.addItem ("CC", 1);
     type.addItem ("PC", 2);
+    type.addItem ("CC %", 3);
     type.setSelectedId (row.type + 1, juce::dontSendNotification);
-    type.onChange = [this] { val.setEnabled (type.getSelectedId() == 1); apply(); };
+    type.onChange = [this]
+    {
+        const int t = type.getSelectedId() - 1;
+        val.setEnabled (t != 1);
+        val.setRange (0, t == 2 ? 100 : 127, 1);
+        apply();
+    };
     addAndMakeVisible (type);
 
     auto setup = [this] (juce::Slider& s, double lo, double hi, double v, int textW)
@@ -32,7 +39,7 @@ RowComponent::RowComponent (BridgeProcessor& p, int idx, std::function<void()> o
 
     setup (ch,   1, 16,  row.channel,     44);
     setup (num,  0, 127, row.number,      44);
-    setup (val,  0, 127, row.value,       44);
+    setup (val,  0, row.type == 2 ? 100 : 127, row.value, 44);
     setup (trig, -1, 127, row.triggerNote, 64);
 
     trig.textFromValueFunction = [] (double v)
@@ -51,7 +58,7 @@ RowComponent::RowComponent (BridgeProcessor& p, int idx, std::function<void()> o
     trig.setValue (row.triggerNote, juce::dontSendNotification);
     trig.updateText();
 
-    val.setEnabled (row.type == 0);
+    val.setEnabled (row.type != 1);
 
     send.onClick = [this] { apply(); proc.sendRowNow (index); };
     addAndMakeVisible (send);

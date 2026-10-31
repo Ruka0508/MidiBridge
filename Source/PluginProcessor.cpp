@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
 
 BridgeProcessor::BridgeProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true))
@@ -27,11 +28,14 @@ BridgeProcessor::Raw BridgeProcessor::makeRaw (const BridgeRow& r)
 {
     Raw raw;
     const int ch = juce::jlimit (1, 16, r.channel) - 1;
-    if (r.type == 0)
+    if (r.type == 0 || r.type == 2)   // 0 = CC (0-127), 2 = CC % (0-100 -> 0-127)
     {
+        int v = juce::jlimit (0, 127, r.value);
+        if (r.type == 2)
+            v = (int) std::lround (juce::jlimit (0, 100, r.value) * 127.0 / 100.0);
         raw.d[0] = (juce::uint8) (0xB0 | ch);
         raw.d[1] = (juce::uint8) juce::jlimit (0, 127, r.number);
-        raw.d[2] = (juce::uint8) juce::jlimit (0, 127, r.value);
+        raw.d[2] = (juce::uint8) v;
         raw.n = 3;
     }
     else
