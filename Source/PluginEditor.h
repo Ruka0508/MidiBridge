@@ -6,15 +6,19 @@ class RowComponent : public juce::Component
 public:
     RowComponent (BridgeProcessor& p, int idx, std::function<void()> onRemove);
     void resized() override;
+    void paint (juce::Graphics&) override;
 
-    static constexpr int widths[8] = { 170, 70, 84, 84, 84, 104, 56, 30 };
+    static constexpr int widths[9] = { 24, 170, 70, 84, 84, 84, 104, 56, 30 };
     static constexpr int gap = 4;
 
 private:
     void apply();
+    void updateColour();
 
     BridgeProcessor& proc;
     int index;
+    juce::uint32 colourArgb = 0;
+    juce::TextButton swatch;
     juce::TextEditor memo;
     juce::ComboBox type;
     juce::Slider ch, num, val, trig;

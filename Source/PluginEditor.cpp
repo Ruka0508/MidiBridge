@@ -1,13 +1,96 @@
 #include "PluginEditor.h"
 
 static constexpr int rowH = 34;
-static constexpr int contentW = 720;
+static constexpr int contentW = 760;
+
+// ---------------------------------------------------------------- Palette popup
+class PaletteComponent : public juce::Component
+{
+public:
+    explicit PaletteComponent (std::function<void (juce::uint32)> cb) : onPick (std::move (cb))
+    {
+        for (int row = 0; row < rows; ++row)
+            for (int col = 0; col < cols; ++col)
+                colours.push_back (makeColour (row, col));
+
+        setSize (pad * 2 + cols * cell, pad * 2 + noneH + 4 + rows * cell);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff2a2f35));
+
+        auto none = noneArea();
+        g.setColour (juce::Colour (0xff4a5058));
+        g.fillRoundedRectangle (none.toFloat(), 4.0f);
+        g.setColour (juce::Colours::white);
+        g.setFont (13.0f);
+        g.drawText ("No colour", none, juce::Justification::centred);
+
+        for (int i = 0; i < (int) colours.size(); ++i)
+        {
+            g.setColour (colours[(size_t) i]);
+            g.fillRect (cellArea (i).reduced (1));
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        juce::uint32 picked = 0;
+        bool hit = false;
+
+        if (noneArea().contains (e.getPosition()))
+            hit = true;
+        else
+            for (int i = 0; i < (int) colours.size(); ++i)
+                if (cellArea (i).contains (e.getPosition()))
+                {
+                    picked = colours[(size_t) i].getARGB();
+                    hit = true;
+                    break;
+                }
+
+        if (! hit)
+            return;
+
+        auto cb = onPick;
+        auto* box = findParentComponentOfClass<juce::CallOutBox>();
+        if (cb) cb (picked);
+        if (box != nullptr) box->dismiss();
+    }
+
+private:
+    static constexpr int cols = 12, rows = 5, cell = 22, pad = 8, noneH = 24;
+
+    static juce::Colour makeColour (int row, int col)
+    {
+        const float h = (float) col / (float) cols;
+        switch (row)
+        {
+            case 0:  return juce::Colour::fromHSV (h, 0.40f, 1.00f, 1.0f);   // pastel
+            case 1:  return juce::Colour::fromHSV (h, 0.65f, 0.90f, 1.0f);   // bright
+            case 2:  return juce::Colour::fromHSV (h, 0.85f, 0.65f, 1.0f);   // deep
+            case 3:  return juce::Colour::fromHSV (h, 0.70f, 0.38f, 1.0f);   // dark
+            default: return juce::Colour::fromHSV (0.0f, 0.0f, 1.0f - (float) col * 0.08f, 1.0f); // greys
+        }
+    }
+
+    juce::Rectangle<int> noneArea() const { return { pad, pad, cols * cell, noneH }; }
+    juce::Rectangle<int> cellArea (int i) const
+    {
+        return { pad + (i % cols) * cell, pad + noneH + 4 + (i / cols) * cell, cell, cell };
+    }
+
+    std::function<void (juce::uint32)> onPick;
+    std::vector<juce::Colour> colours;
+};
 
 // ---------------------------------------------------------------- RowComponent
 RowComponent::RowComponent (BridgeProcessor& p, int idx, std::function<void()> onRemove)
     : proc (p), index (idx)
 {
     const auto row = proc.getRow (idx);
+    colourArgb = row.colour;
 
     memo.setText (row.memo, false);
     memo.setTextToShowWhenEmpty ("memo", juce::Colours::grey);
@@ -65,6 +148,26 @@ RowComponent::RowComponent (BridgeProcessor& p, int idx, std::function<void()> o
 
     remove.onClick = std::move (onRemove);
     addAndMakeVisible (remove);
+
+    swatch.onClick = [this]
+    {
+        juce::Component::SafePointer<RowComponent> safe (this);
+        auto palette = std::make_unique<PaletteComponent> ([safe] (juce::uint32 c)
+        {
+            if (safe != nullptr)
+            {
+                safe->colourArgb = c;
+                safe->updateColour();
+                safe->apply();
+            }
+        });
+        auto* top = getTopLevelComponent();
+        juce::CallOutBox::launchAsynchronously (std::move (palette),
+                                                top->getLocalArea (&swatch, swatch.getLocalBounds()),
+                                                top);
+    };
+    addAndMakeVisible (swatch);
+    updateColour();
 }
 
 void RowComponent::apply()
@@ -76,14 +179,41 @@ void RowComponent::apply()
     r.number      = (int) num.getValue();
     r.value       = (int) val.getValue();
     r.triggerNote = (int) trig.getValue();
+    r.colour      = colourArgb;
     proc.setRow (index, r);
+}
+
+void RowComponent::updateColour()
+{
+    const bool none = ((colourArgb >> 24) == 0);
+    const juce::Colour c (colourArgb);
+
+    swatch.setColour (juce::TextButton::buttonColourId, none ? juce::Colour (0xff555a60) : c);
+    swatch.setButtonText (none ? "-" : "");
+
+    const auto fieldBg = c.darker (0.7f);
+    memo.setColour (juce::TextEditor::backgroundColourId,
+                    none ? getLookAndFeel().findColour (juce::TextEditor::backgroundColourId) : fieldBg);
+    type.setColour (juce::ComboBox::backgroundColourId,
+                    none ? getLookAndFeel().findColour (juce::ComboBox::backgroundColourId) : fieldBg);
+    memo.repaint();
+    type.repaint();
+    repaint();
+}
+
+void RowComponent::paint (juce::Graphics& g)
+{
+    if ((colourArgb >> 24) == 0)
+        return;
+    g.setColour (juce::Colour (colourArgb).withAlpha (0.22f));
+    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), 5.0f);
 }
 
 void RowComponent::resized()
 {
     auto r = getLocalBounds().reduced (2);
-    juce::Component* comps[8] = { &memo, &type, &ch, &num, &val, &trig, &send, &remove };
-    for (int i = 0; i < 8; ++i)
+    juce::Component* comps[9] = { &swatch, &memo, &type, &ch, &num, &val, &trig, &send, &remove };
+    for (int i = 0; i < 9; ++i)
     {
         comps[i]->setBounds (r.removeFromLeft (widths[i]));
         r.removeFromLeft (gap);
@@ -119,8 +249,8 @@ BridgeEditor::BridgeEditor (BridgeProcessor& p)
     rebuildRows();
 
     setResizable (true, true);
-    setResizeLimits (600, 240, 1100, 900);
-    setSize (760, 420);
+    setResizeLimits (640, 240, 1200, 900);
+    setSize (800, 420);
     startTimerHz (10);
 }
 
@@ -177,9 +307,9 @@ void BridgeEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colours::lightgrey);
     g.setFont (13.0f);
 
-    const char* names[8] = { "Memo", "Type", "Ch", "No.", "Value", "Trigger note (C3=60)", "", "" };
+    const char* names[9] = { "", "Memo", "Type", "Ch", "No.", "Value", "Trigger note (C3=60)", "", "" };
     int x = 8 + 2;
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < 9; ++i)
     {
         g.drawText (names[i], x, 46, RowComponent::widths[i] + 40, 18, juce::Justification::centredLeft);
         x += RowComponent::widths[i] + RowComponent::gap;

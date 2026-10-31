@@ -11,6 +11,7 @@ struct BridgeRow
     int number = 0;        // CC number or program number
     int value = 0;         // CC value (unused for PC)
     int triggerNote = -1;  // -1 = none
+    juce::uint32 colour = 0; // ARGB, 0 = none
 };
 
 class BridgeProcessor : public juce::AudioProcessor, private juce::Timer

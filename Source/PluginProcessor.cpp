@@ -197,6 +197,7 @@ void BridgeProcessor::getStateInformation (juce::MemoryBlock& dest)
             e->setAttribute ("num", r.number);
             e->setAttribute ("val", r.value);
             e->setAttribute ("trig", r.triggerNote);
+            e->setAttribute ("col", juce::String::toHexString ((int) r.colour));
         }
     }
     copyXmlToBinary (xml, dest);
@@ -220,6 +221,7 @@ void BridgeProcessor::setStateInformation (const void* data, int size)
             r.number      = e->getIntAttribute ("num", 0);
             r.value       = e->getIntAttribute ("val", 0);
             r.triggerNote = e->getIntAttribute ("trig", -1);
+            r.colour      = (juce::uint32) e->getStringAttribute ("col").getHexValue32();
             rows.push_back (r);
         }
     }
